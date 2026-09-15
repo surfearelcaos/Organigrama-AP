@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Organigrama Austral Pack — 2026</title>
+<style>
+  /*
+    ===========================================================
+    ORGANIGRAMA JERÁRQUICO — AUSTRAL PACK 2026
+    ===========================================================
+    Archivo único, sin dependencias externas. Árbol clásico con
+    líneas conectoras (técnica CSS estándar de "family tree").
+
+    CÓMO EDITAR LA ESTRUCTURA:
+    Todo el árbol vive en la constante ORG_DATA, en el <script>
+    al final del archivo. Cada nodo:
+      { name, role, area, vacant (opcional, true/false), children: [...] }
+
+    PALETA DE MARCA (Manual_De_Marca.pdf):
+      rojo oscuro   #9e050d
+      rojo medio    #e0151e
+      salmón cálido #fa4440
+    ===========================================================
+  */
+
+  :root{
+    /* Paleta de marca Austral Pack (Manual_De_Marca.pdf) */
+    --brand-dark: #9e050d;
+    --brand-mid: #e0151e;
+    --brand-salmon: #fa4440;
+    --ink: #231f20;
+    --gray-text: #5b5b5b;
+    --border: #d8d3d2;
+    --surface: #f7f5f4;
+    --white: #ffffff;
+    --highlight: #fff3cd;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+
+  body {
+    padding: 24px 16px 64px;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--white);
+    color: var(--ink);
+    overflow-x: hidden;
+  }
+
+  header.oc-header { max-width: 900px; margin: 0 auto 20px; }
+  header.oc-header h1 { font-size: 21px; font-weight: 700; color: var(--brand-dark); margin: 0; }
+
+  .oc-scroll {
+    overflow: auto;
+    padding: 20px 10px 40px;
+    border-top: 1px solid var(--border);
+    cursor: grab;
+    user-select: none;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    max-height: calc(100vh - 150px);
+  }
+  .oc-scroll::-webkit-scrollbar { display: none; }
+  .oc-scroll.oc-panning {
+    cursor: grabbing;
+  }
+  /* En dispositivos táctiles usamos scroll nativo, no pan personalizado */
+  body.is-touch .oc-scroll {
+    cursor: default;
+  }
+  .oc-canvas {
+    position: relative;
+    transform-origin: top left;
+    transition: transform 0.15s ease;
+  }
+
+  /* ---- Bandas de nivel jerárquico (eje Y). El eje X sigue la
+     distribución natural del árbol (cada cargo se centra sobre el
+     ancho de su equipo), y el eje Y ubica cada cargo en la banda de su
+     nivel real — un hijo nunca queda en la misma banda que su jefe. Los
+     conectores se miden sobre el DOM real y se dibujan aparte en SVG. ---- */
+  .lvl-band {
+    position: absolute;
+    left: 0;
+    border-bottom: 1px dashed #ece7e6;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .lvl-band.odd { background: #fbf9f9; }
+
+  .connectors-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ---- Tarjetas de cargo ---- */
+  .node-wrap { position: absolute; }
+  .node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    width: 180px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: var(--white);
+    cursor: pointer;
+    text-align: center;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    position: relative;
+    z-index: 2;
+  }
+  .node:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-color: var(--brand-mid);
+  }
+  .node.highlighted {
+    background: var(--highlight) !important;
+    border-color: #ffc107 !important;
+    box-shadow: 0 0 0 3px rgba(255,193,7,0.35);
+  }
+
+  .node .role {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.25;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+  .node .who {
+    font-size: 11.5px;
+    color: var(--gray-text);
+    line-height: 1.25;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+  .node .area-tag {
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-top: 4px;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Filtro por área: atenúa lo que no coincide, resalta lo que sí */
+  .node.area-dim {
+    opacity: 0.2;
+    filter: grayscale(70%);
+  }
+  .node.area-match {
+    box-shadow: 0 0 0 2px var(--brand-mid);
+  }
+
+  /* nivel 0: Gerente General */
+  .node.tier-0 {
+    background: var(--brand-dark);
+    border-color: var(--brand-dark);
+    width: 200px;
+  }
+  .node.tier-0 .role, .node.tier-0 .who { color: var(--white); }
+
+  /* nivel 1: gerencias / jefaturas de primera línea */
+  .node.tier-1 {
+    border-color: var(--brand-mid);
+    border-width: 2px;
+  }
+  .node.tier-1 .role { color: var(--brand-dark); }
+
+  /* nivel 2 en adelante: tono neutro con acento salmón sutil */
+  .node.tier-2 { background: var(--surface); }
+  .node.tier-3, .node.tier-4 { background: var(--white); }
+
+  /* vacante */
+  .node.vacant {
+    border-style: dashed;
+    border-color: var(--gray-text);
+    background: var(--white);
+  }
+  .node.vacant .role { color: var(--gray-text); font-style: italic; }
+
+  /* nodo colapsable */
+  .toggle-btn {
+    position: absolute;
+    bottom: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    color: var(--gray-text);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+  }
+  .toggle-btn:hover { border-color: var(--brand-mid); color: var(--brand-mid); }
+
+  .oc-toolbar {
+    max-width: 900px;
+    margin: 14px auto 0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .oc-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--ink);
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .oc-tool-btn:hover { border-color: var(--brand-mid); color: var(--brand-mid); }
+  .oc-tool-group {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+  .oc-tool-group .oc-tool-btn {
+    border: none;
+    border-radius: 0;
+    border-right: 1px solid var(--border);
+  }
+  .oc-tool-group .oc-tool-btn:last-child { border-right: none; }
+  .oc-zoom-label {
+    font-size: 12px;
+    color: var(--gray-text);
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    min-width: 42px;
+    justify-content: center;
+  }
+
+  /* Buscador */
+  .oc-search-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .oc-search-wrap input {
+    padding: 7px 10px 7px 28px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+    width: 200px;
+    outline: none;
+  }
+  .oc-search-wrap input:focus { border-color: var(--brand-mid); }
+  .oc-search-wrap svg {
+    position: absolute;
+    left: 8px;
+    width: 14px;
+    height: 14px;
+    color: var(--gray-text);
+    pointer-events: none;
+  }
+  .oc-search-count {
+    font-size: 11px;
+    color: var(--gray-text);
+    margin-left: 6px;
+  }
+
+  /* Panel modal de detalle (centrado) */
+  .slide-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 380px;
+    max-width: 90vw;
+    max-height: 85vh;
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+    z-index: 1000;
+    transform: translate(-50%, -50%) scale(0.95);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+    padding: 28px 24px 24px;
+    overflow-y: auto;
+  }
+  .slide-panel.open {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .slide-panel-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.25);
+    z-index: 999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .slide-panel-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .panel-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--white);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: var(--gray-text);
+  }
+  .panel-close:hover { border-color: var(--brand-mid); color: var(--brand-mid); }
+  .panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--brand-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .panel-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 16px;
+    line-height: 1.3;
+  }
+  .panel-section {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-section:last-child { border-bottom: none; }
+  .panel-label {
+    font-size: 11px;
+    color: var(--gray-text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .panel-value {
+    font-size: 14px;
+    color: var(--ink);
+    line-height: 1.4;
+  }
+  .panel-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+  .panel-badge.vacant {
+    background: #f8f9fa;
+    color: var(--gray-text);
+    border: 1px dashed var(--gray-text);
+  }
+  .panel-badge.active {
+    background: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  /* ---- Barra de herramientas: buscador+filtro a la izquierda, vista a la derecha ---- */
+  .oc-toolbar-left, .oc-toolbar-right {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  /* ---- Filtro por área (desplegable junto al buscador) ---- */
+  .oc-area-filter { position: relative; }
+  .oc-area-filter-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 230px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    padding: 6px;
+    z-index: 400;
+    display: none;
+  }
+  .oc-area-filter.open .oc-area-filter-menu { display: block; }
+  .oc-area-filter.open .oc-area-filter-toggle { border-color: var(--brand-mid); color: var(--brand-mid); }
+  .oc-area-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    background: none;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+  }
+  .oc-area-chip:hover { background: var(--surface); }
+  .oc-area-chip.active { background: var(--surface); font-weight: 700; }
+  .oc-area-chip .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(0,0,0,0.15);
+  }
+  .oc-area-chip .count { margin-left: auto; font-size: 10.5px; color: var(--gray-text); }
+  .oc-area-chip.reset { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; color: var(--brand-dark); font-weight: 600; }
+
+  /* ---- Botón flotante de exportación ---- */
+  .oc-export-fab {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 500;
+  }
+  .oc-export-fab-btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: none;
+    background: var(--brand-dark);
+    color: var(--white);
+    box-shadow: 0 6px 18px rgba(158,5,13,0.35);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .oc-export-fab-btn:hover { background: var(--brand-mid); }
+  .oc-export-fab-btn svg { width: 22px; height: 22px; }
+  .oc-export-menu {
+    position: absolute;
+    bottom: 62px;
+    right: 0;
+    min-width: 220px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    overflow: hidden;
+    display: none;
+  }
+  .oc-export-menu.open { display: block; }
+  .oc-export-option {
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+    border: none;
+    background: var(--white);
+    color: var(--ink);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+  .oc-export-option:last-child { border-bottom: none; }
+  .oc-export-option:hover { background: var(--surface); color: var(--brand-mid); }
+  .oc-export-option:disabled { opacity: 0.6; cursor: default; }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .oc-toolbar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .oc-toolbar-left, .oc-toolbar-right { justify-content: flex-start; }
+    .oc-search-wrap input { width: 100%; }
+    .node { min-width: 120px; max-width: 150px; padding: 8px 10px; }
+    .node .role { font-size: 11px; }
+    .node .who { font-size: 10.5px; }
+    .slide-panel { width: 92vw; max-width: 92vw; max-height: 80vh; }
+    .oc-area-filter-menu { width: calc(100vw - 40px); left: 0; }
+    .oc-export-fab { right: 10px; bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="oc-header">
+  <h1>Organigrama Austral Pack</h1>
+</header>
+
+<div class="oc-toolbar">
+  <div class="oc-toolbar-left">
+    <div class="oc-search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="search-input" placeholder="Buscar cargo o persona…" autocomplete="off">
+      <span class="oc-search-count" id="search-count"></span>
+    </div>
+    <div class="oc-area-filter" id="area-filter">
+      <button class="oc-tool-btn oc-area-filter-toggle" id="area-filter-toggle">Filtrar por área <span class="chev">▾</span></button>
+      <div class="oc-area-filter-menu" id="area-filter-body"></div>
+    </div>
+  </div>
+  <div class="oc-toolbar-right">
+    <div class="oc-tool-group">
+      <button class="oc-tool-btn" id="zoom-out" aria-label="Alejar">−</button>
+      <span class="oc-zoom-label" id="zoom-label">100%</span>
+      <button class="oc-tool-btn" id="zoom-in" aria-label="Acercar">+</button>
+      <button class="oc-tool-btn" id="zoom-reset" aria-label="Restablecer zoom">Restablecer</button>
+    </div>
+    <button class="oc-tool-btn" id="collapse-all">Colapsar todo</button>
+    <button class="oc-tool-btn" id="expand-all">Expandir todo</button>
+  </div>
+</div>
+
+<div class="oc-scroll" id="oc-scroll">
+  <div class="oc-canvas" id="oc-canvas"></div>
+</div>
+
+<!-- Botón flotante de exportación -->
+<div class="oc-export-fab" id="export-fab">
+  <div class="oc-export-menu" id="export-menu">
+    <button class="oc-export-option" id="export-image">Exportar como imagen (PNG)</button>
+    <button class="oc-export-option" id="export-ppt">Exportar como PowerPoint (PPTX)</button>
+  </div>
+  <button class="oc-export-fab-btn" id="export-fab-btn" aria-haspopup="true" aria-expanded="false" aria-label="Exportar organigrama">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path></svg>
+  </button>
+</div>
+
+<!-- Panel lateral de detalle -->
+<div class="slide-panel-overlay" id="panel-overlay"></div>
+<aside class="slide-panel" id="slide-panel">
+  <button class="panel-close" id="panel-close" aria-label="Cerrar panel">×</button>
+  <div id="panel-content"></div>
+</aside>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+
+<script>
+/*
+  ===========================================================
+  DATOS DEL ORGANIGRAMA — editar solo aquí
+  ===========================================================
+  Cada nodo:
+    role:     nombre del cargo
+    name:     nombre de la persona ("Vacante" si no está cubierto)
+    level:    nivel jerárquico (0-7). Define la FILA donde se dibuja el
+              cargo (0 y 1 se muestran igual, como "Gerencia"; 0 queda
+              solo para el Gerente General, así el organigrama respeta
+              la jerarquía real y no solo la línea de reporte).
+    area:     área/departamento al que pertenece el cargo — es la
+              etiqueta que se muestra en la tarjeta y la que usa el
+              filtro por área.
+    vacant:   true si el cargo no tiene titular
+    children: arreglo de nodos hijos (puede ir vacío []). El hijo puede
+              tener cualquier nivel (no necesariamente uno más que el
+              padre) — el layout lo ubica en su fila y dibuja la línea
+              hasta su jefe directo.
+  ===========================================================
+*/
+const ORG_DATA = {
+  role: "Gerente General", name: "Luis Mayorga", level: 0, area: "Gerencia",
+  children: [
+    {
+      role: "Gerente de Planificación y Gestión", name: "Fabiola Velásquez", level: 1, area: "Gerencia",
+      children: [
+        { role: "Asistente de Administración y RRHH", name: "Alejandra Bahamondes", level: 6, area: "Recursos Humanos", children: [] },
+        { role: "Asistente de Servicios Generales", name: "María Jacqueline Díaz", level: 7, area: "Recursos Humanos", children: [] }
+      ]
+    },
+    {
+      role: "Gerente Comercial", name: "Saúl Soto", level: 1, area: "Gerencia",
+      children: [
+        { role: "Jefa de Planificación y Gestión Comercial", name: "Daniela González", level: 2, area: "Comercial", children: [] },
+        { role: "Key Account Manager", name: "Carlos Navarro", level: 5, area: "Comercial", children: [] },
+        { role: "Key Account Manager", name: "Daniela Carvajal", level: 5, area: "Comercial", children: [] },
+        { role: "Ingeniero de Proyectos", name: "Ignacio Hagedorn", level: 5, area: "Máquinas y Proyectos", children: [] }
+      ]
+    },
+    {
+      role: "Gerente de Administración y Finanzas", name: "Juan Pablo Escobar", level: 1, area: "Gerencia",
+      children: [
+        {
+          role: "Controller Financiero", name: "José Morales", level: 5, area: "Finanzas",
+          children: [
+            { role: "Analista Contable", name: "Valentina González", level: 5, area: "Finanzas", children: [] }
+          ]
+        },
+        {
+          role: "Analista de Cadena de Suministro", name: "Sebastián Almonacid", level: 5, area: "Cadena de Suministro",
+          children: [
+            { role: "Responsable de Bodega", name: "Maximiliano Guerrero", level: 7, area: "Cadena de Suministro", children: [] }
+          ]
+        },
+        {
+          role: "Ingeniero de Transformación y Sistemas", name: "Fernando Ruiz", level: 5, area: "TI",
+          children: [
+            { role: "Analista Informático", name: "Diego Lorr", level: 5, area: "TI", children: [] }
+          ]
+        },
+        { role: "Analista de Gestión (Sucursal Santiago)", name: "Gipsy Nahuelquín", level: 5, area: "Sucursal Santiago", children: [] },
+        { role: "Asistente Logístico", name: "Manuel Pizarro", level: 7, area: "Sucursal Santiago", children: [] }
+      ]
+    },
+    {
+      role: "Jefe de Servicio Técnico PM", name: "Marcelo Contreras", level: 2, area: "Servicio Técnico (Puerto Montt)",
+      children: [
+        {
+          role: "Supervisor de Servicio Técnico PM", name: "Eduardo Thomassen", level: 3, area: "Servicio Técnico (Puerto Montt)",
+          children: [
+            { role: "Técnico de Servicio PM", name: "David Moncada", level: 6, area: "Servicio Técnico (Puerto Montt)", children: [] },
+            { role: "Técnico de Servicio PM", name: "Jean Muñoz", level: 6, area: "Servicio Técnico (Puerto Montt)", children: [] },
+            { role: "Técnico de Servicio PM", name: "Alexis Retamal", level: 6, area: "Servicio Técnico (Puerto Montt)", children: [] },
+            { role: "Técnico de Servicio PM", name: "Erwin Jaramillo", level: 6, area: "Servicio Técnico (Puerto Montt)", children: [] }
+          ]
+        }
+      ]
+    },
+    {
+      role: "Jefe de Repuestos", name: "Ian Basilio", level: 2, area: "Repuestos",
+      children: [
+        { role: "Vendedor Técnico de Repuestos", name: "Kurtt Vargas", level: 6, area: "Repuestos", children: [] }
+      ]
+    },
+    {
+      role: "Supervisor de Servicio Técnico Stgo", name: "Luis Mora", level: 3, area: "Servicio Técnico (Santiago)",
+      children: [
+        { role: "Técnico de Servicio Stgo", name: "Felipe Díaz", level: 6, area: "Servicio Técnico (Santiago)", children: [] },
+        { role: "Técnico de Servicio Stgo", name: "Emardo Hurtado", level: 6, area: "Servicio Técnico (Santiago)", children: [] },
+        { role: "Técnico de Servicio Stgo", name: "Bryan Azócar", level: 6, area: "Servicio Técnico (Santiago)", children: [] }
+      ]
+    },
+    { role: "Coordinador de Innovación", name: "Lilian Mansilla", level: 5, area: "Innovación", children: [] },
+    {
+      role: "Supervisor de Diseño", name: "José Vera", level: 3, area: "Innovación",
+      children: [
+        { role: "Proyectista Mecánico", name: "Sergio Zambrano", level: 6, area: "Innovación", children: [] }
+      ]
+    },
+    {
+      role: "Supervisor de Innovación", name: "César Maldonado", level: 3, area: "Innovación",
+      children: [
+        { role: "Soldador", name: "Luis Cumicheo", level: 7, area: "Innovación", children: [] }
+      ]
+    },
+    { role: "Técnico en Automatización", name: "Alexis López", level: 6, area: "Innovación", children: [] },
+    {
+      role: "Supervisor de Producción", name: "Fredy Almonacid", level: 3, area: "Innovación",
+      children: [
+        { role: "Técnico Mecánico", name: "Daniel Cárcamo", level: 6, area: "Innovación", children: [] },
+        { role: "Técnico Mecánico", name: "Rodrigo Paillacar", level: 6, area: "Innovación", children: [] }
+      ]
+    }
+  ]
+};
+
+/* Nivel jerárquico: solo define la FILA (eje Y) y el color/ancho de la
+   tarjeta (0 y 1 se muestran igual, como "Gerencia"). La banda 0 lleva
+   nombre propio ("Gerente General") para distinguirla de la fila 1. */
+const BAND_LABELS = ["Gerente General", "Gerencia", "Jefatura / Líder", "Supervisión", "Coordinación", "Profesional especializado", "Técnico especializado", "Operativo / Soporte"];
+
+/* Área/departamento: es la etiqueta visible en cada tarjeta y la que usa
+   el filtro de la barra de herramientas. */
+const AREA_COLORS = {
+  "Gerencia": { bg: "#eceff1", fg: "#37474f" },
+  "Comercial": { bg: "#e3f2fd", fg: "#1565c0" },
+  "Máquinas y Proyectos": { bg: "#e8eaf6", fg: "#3949ab" },
+  "Repuestos": { bg: "#fce4ec", fg: "#ad1457" },
+  "Finanzas": { bg: "#e8f5e9", fg: "#2e7d32" },
+  "Cadena de Suministro": { bg: "#fff3e0", fg: "#ef6c00" },
+  "TI": { bg: "#e0f7fa", fg: "#00838f" },
+  "Sucursal Santiago": { bg: "#f3e5f5", fg: "#6a1b9a" },
+  "Servicio Técnico (Puerto Montt)": { bg: "#fffde7", fg: "#f9a825" },
+  "Servicio Técnico (Santiago)": { bg: "#fbe9e7", fg: "#d84315" },
+  "Innovación": { bg: "#e0f2f1", fg: "#00695c" },
+  "Recursos Humanos": { bg: "#efebe9", fg: "#4e342e" }
+};
+function areaColor(area) {
+  return AREA_COLORS[area] || { bg: "#f0f0f0", fg: "#5b5b5b" };
+}
+
+/* Referencia al jefe de cada cargo, para poder "subir" desde una
+   coincidencia del filtro por área hasta la raíz */
+(function assignParents(node, parent) {
+  node._parent = parent || null;
+  (node.children || []).forEach(child => assignParents(child, node));
+})(ORG_DATA, null);
+
+/* ===========================================================
+   MOTOR DE LAYOUT: eje X = distribución del árbol (cada cargo se centra
+   sobre el ancho de su propio equipo, como un family tree clásico),
+   eje Y = nivel jerárquico real. Un hijo nunca comparte banda con su
+   jefe (effLevel = max(nivel propio, nivel del jefe + 1)): si su nivel
+   declarado es mayor, la tarjeta simplemente salta bandas vacías.
+   Se reconstruye todo el DOM en cada cambio (colapsar, buscar, filtrar)
+   para que las posiciones y las líneas siempre queden exactas.
+   =========================================================== */
+const SLOT_W = 210, NODE_W = 180, ROW_H = 108, X0 = 24, Y0 = 10;
+const canvas = document.getElementById("oc-canvas");
+const positions = new Map();       // nodo -> {left, width, level}
+let nodeMap = [];                  // [{el, node, wrap}] — solo cargos visibles
+let nextSlot = 0;
+let filterKeepSet = null;          // null = sin filtro; si no, set de nodos a mostrar
+
+/* Cargos que hay que conservar mientras el filtro por área está activo:
+   los que coinciden con el área elegida, más todos sus jefes (directos o
+   no), para que el árbol siga conectado hasta la raíz. */
+function computeFilterKeepSet() {
+  const keep = new Set();
+  (function scan(node) {
+    if (activeAreas.has(node.area)) {
+      let n = node;
+      while (n && !keep.has(n)) { keep.add(n); n = n._parent; }
+    }
+    (node.children || []).forEach(scan);
+  })(ORG_DATA);
+  return keep;
+}
+
+/* Hijos visibles de un cargo: respeta el colapsado manual y, si hay un
+   filtro por área activo, además solo deja pasar a los que coincidan o
+   sean jefes de alguien que coincida */
+function visibleKids(node) {
+  const kids = node._collapsed ? [] : (node.children || []);
+  return filterKeepSet ? kids.filter(k => filterKeepSet.has(k)) : kids;
+}
+
+function walk(node, parentLevel) {
+  const effLevel = Math.max(node.level, parentLevel + 1);
+  const kids = visibleKids(node);
+  if (!kids.length) {
+    positions.set(node, { left: nextSlot, width: 1, level: effLevel });
+    nextSlot += 1;
+    return;
+  }
+  const start = nextSlot;
+  kids.forEach(k => walk(k, effLevel));
+  positions.set(node, { left: start, width: nextSlot - start, level: effLevel });
+}
+function cxOf(pos) { return X0 + (pos.left + pos.width / 2) * SLOT_W; }
+
+function render() {
+  positions.clear();
+  nodeMap = [];
+  nextSlot = 0;
+  filterKeepSet = activeAreas.size > 0 ? computeFilterKeepSet() : null;
+  walk(ORG_DATA, -1);
+
+  let maxLevel = 0;
+  positions.forEach(p => { if (p.level > maxLevel) maxLevel = p.level; });
+
+  const W = X0 + nextSlot * SLOT_W + 40;
+  const H = Y0 + (maxLevel + 1) * ROW_H + 30;
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  canvas.innerHTML = "";
+
+  /* Bandas del eje Y (una por nivel jerárquico). BAND_LABELS describe cada
+     fila (útil como referencia interna al distribuir o agregar cargos
+     nuevos), pero ya no se muestran en pantalla: solo queda el rayado
+     de fondo para separar visualmente las filas. */
+  for (let l = 0; l <= maxLevel; l++) {
+    const band = document.createElement("div");
+    band.className = "lvl-band" + (l % 2 ? " odd" : "");
+    band.style.top = (Y0 + l * ROW_H) + "px";
+    band.style.height = ROW_H + "px";
+    band.style.width = W + "px";
+    canvas.appendChild(band);
+  }
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "connectors-svg");
+  svg.setAttribute("id", "connectors-svg");
+  svg.setAttribute("width", W);
+  svg.setAttribute("height", H);
+  canvas.appendChild(svg);
+
+  /* Tarjetas */
+  positions.forEach((pos, node) => {
+    const wrap = document.createElement("div");
+    wrap.className = "node-wrap";
+
+    const div = document.createElement("div");
+    const tier = Math.min(Math.max(node.level - 1, 0), 4);
+    div.className = "node tier-" + tier + (node.vacant ? " vacant" : "");
+    div.dataset.role = node.role || "";
+    div.dataset.name = node.name || "";
+    div.dataset.vacant = node.vacant ? "1" : "0";
+    div.dataset.area = node.area || "";
+
+    const roleEl = document.createElement("div");
+    roleEl.className = "role";
+    roleEl.textContent = node.role;
+    div.appendChild(roleEl);
+
+    const whoEl = document.createElement("div");
+    whoEl.className = "who";
+    whoEl.textContent = node.name;
+    div.appendChild(whoEl);
+
+    if (node.area) {
+      const areaEl = document.createElement("div");
+      areaEl.className = "area-tag";
+      areaEl.textContent = node.area;
+      const c = areaColor(node.area);
+      areaEl.style.background = c.bg;
+      areaEl.style.color = c.fg;
+      div.appendChild(areaEl);
+    }
+
+    /* Click en el nodo abre el panel de detalle */
+    div.addEventListener("click", (e) => {
+      if (e.target.closest(".toggle-btn")) return;
+      openPanel(node);
+    });
+
+    wrap.appendChild(div);
+    wrap.style.left = (cxOf(pos) - (node.level === 0 ? 100 : NODE_W / 2)) + "px";
+    wrap.style.top = (Y0 + pos.level * ROW_H + 14) + "px";
+
+    /* Si el filtro por área está activo, solo vale la pena mostrar el
+       botón de colapsar cuando expandir revelaría algún hijo que pase
+       el filtro (si no, no habría nada nuevo que ver) */
+    const toggleableKids = filterKeepSet ? (node.children || []).filter(k => filterKeepSet.has(k)) : (node.children || []);
+    if (toggleableKids.length > 0) {
+      const btn = document.createElement("button");
+      btn.className = "toggle-btn";
+      btn.textContent = node._collapsed ? "+" : "–";
+      btn.setAttribute("aria-label", "Colapsar/expandir equipo de " + (node.name || node.role));
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        node._collapsed = !node._collapsed;
+        render();
+      });
+      wrap.appendChild(btn);
+    }
+
+    canvas.appendChild(wrap);
+    nodeMap.push({ el: div, node, wrap });
+  });
+
+  requestAnimationFrame(() => drawEdges(svg));
+  applyAreaFilter();
+  reapplySearchHighlight();
+  centerCanvasView();
+}
+
+/* Conectores ortogonales, medidos sobre el DOM real ya posicionado */
+function svgLine(svg, x1, y1, x2, y2) {
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M " + x1 + " " + y1 + " L " + x2 + " " + y2);
+  path.setAttribute("stroke", "#c9c2c1");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("fill", "none");
+  svg.appendChild(path);
+}
+function svgDot(svg, x, y) {
+  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  dot.setAttribute("cx", x);
+  dot.setAttribute("cy", y);
+  dot.setAttribute("r", "3");
+  dot.setAttribute("fill", "#b3aaa9");
+  svg.appendChild(dot);
+}
+
+function drawEdges(svg) {
+  positions.forEach((pos, node) => {
+    const kids = visibleKids(node);
+    if (!kids.length) return;
+    const pEntry = nodeMap.find(e => e.node === node);
+    if (!pEntry) return;
+    const px = cxOf(pos);
+    const py = pEntry.wrap.offsetTop + pEntry.wrap.offsetHeight;
+
+    const kidPts = kids.map(k => {
+      const cPos = positions.get(k);
+      const cEntry = nodeMap.find(e => e.node === k);
+      if (!cPos || !cEntry) return null;
+      return { x: cxOf(cPos), y: cEntry.wrap.offsetTop };
+    }).filter(Boolean);
+    if (!kidPts.length) return;
+
+    svgDot(svg, px, py);
+
+    /* Un solo hijo centrado bajo el jefe: línea recta, sin línea "madre" */
+    if (kidPts.length === 1 && Math.abs(kidPts[0].x - px) < 1) {
+      svgLine(svg, px, py, kidPts[0].x, kidPts[0].y);
+      svgDot(svg, kidPts[0].x, kidPts[0].y);
+      return;
+    }
+
+    /* Todos los hijos cuelgan de UNA sola línea horizontal ("madre"), a
+       una altura fija bajo el jefe — así no quedan varias líneas cruzadas
+       a distinta altura cuando algún hijo está en una fila más abajo que
+       sus hermanos (por ejemplo, por saltarse niveles) */
+    const minKidY = Math.min(...kidPts.map(k => k.y));
+    const busY = py + Math.max(16, Math.min(28, (minKidY - py) / 2));
+
+    svgLine(svg, px, py, px, busY);
+
+    const xs = kidPts.map(k => k.x);
+    svgLine(svg, Math.min(...xs), busY, Math.max(...xs), busY);
+
+    kidPts.forEach(k => {
+      svgLine(svg, k.x, busY, k.x, k.y);
+      svgDot(svg, k.x, k.y);
+    });
+  });
+}
+
+/* ---- Detección de dispositivo táctil ---- */
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if (isTouchDevice) document.body.classList.add("is-touch");
+
+/* ---- Pan con el cursor (solo en desktop) ---- */
+const scrollEl = document.getElementById("oc-scroll");
+let isPanning = false;
+let startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
+
+if (!isTouchDevice) {
+  scrollEl.addEventListener("mousedown", (e) => {
+    if (e.target.closest(".toggle-btn") || e.target.closest(".node")) return;
+    isPanning = true;
+    scrollEl.classList.add("oc-panning");
+    startX = e.pageX;
+    startY = e.pageY;
+    startScrollLeft = scrollEl.scrollLeft;
+    startScrollTop = scrollEl.scrollTop;
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!isPanning) return;
+    e.preventDefault();
+    scrollEl.scrollLeft = startScrollLeft - (e.pageX - startX);
+    scrollEl.scrollTop = startScrollTop - (e.pageY - startY);
+  });
+  window.addEventListener("mouseup", () => {
+    isPanning = false;
+    scrollEl.classList.remove("oc-panning");
+  });
+} else {
+  /* En táctil: el cursor es default y usamos scroll nativo */
+  scrollEl.style.cursor = "default";
+}
+
+/* ---- Zoom ----
+   El zoom es solo un transform visual: el tamaño real del canvas (para
+   que el scroll funcione) ya lo fija render() en cada cambio, así que
+   no hay que recalcular nada aquí. */
+const zoomLabel = document.getElementById("zoom-label");
+let zoom = 1;
+
+function applyZoom() {
+  canvas.style.transform = "scale(" + zoom + ")";
+  zoomLabel.textContent = Math.round(zoom * 100) + "%";
+}
+
+/* Centra la vista sobre el contenido actual (se llama al final de cada
+   render() para que colapsar/expandir/buscar no dejen la vista descuadrada) */
+function centerCanvasView() {
+  requestAnimationFrame(() => {
+    scrollEl.scrollLeft = Math.max(0, (scrollEl.scrollWidth - scrollEl.clientWidth) / 2);
+    scrollEl.scrollTop = Math.max(0, (scrollEl.scrollHeight - scrollEl.clientHeight) / 2);
+  });
+}
+
+document.getElementById("zoom-in").addEventListener("click", () => {
+  zoom = Math.min(zoom + 0.1, 2);
+  applyZoom();
+});
+document.getElementById("zoom-out").addEventListener("click", () => {
+  zoom = Math.max(zoom - 0.1, 0.3);
+  applyZoom();
+});
+document.getElementById("zoom-reset").addEventListener("click", () => {
+  zoom = 1;
+  applyZoom();
+  centerCanvasView();
+});
+
+/* ---- Colapsar / expandir todo ---- */
+function forEachOrgNode(fn) {
+  (function rec(n) { fn(n); (n.children || []).forEach(rec); })(ORG_DATA);
+}
+document.getElementById("collapse-all").addEventListener("click", () => {
+  forEachOrgNode(n => { if (n.children && n.children.length > 0) n._collapsed = true; });
+  render();
+});
+document.getElementById("expand-all").addEventListener("click", () => {
+  forEachOrgNode(n => { n._collapsed = false; });
+  render();
+});
+
+/* ---- Buscador ---- */
+const searchInput = document.getElementById("search-input");
+const searchCount = document.getElementById("search-count");
+
+/* Expande (recursivamente) a los jefes de "target" que estén colapsados;
+   retorna true si tuvo que abrir alguno */
+function expandPathTo(target) {
+  let changed = false;
+  (function rec(node) {
+    if (node === target) return true;
+    for (const k of node.children || []) {
+      if (rec(k)) {
+        if (node._collapsed) { node._collapsed = false; changed = true; }
+        return true;
+      }
+    }
+    return false;
+  })(ORG_DATA);
+  return changed;
+}
+
+/* Resalta las coincidencias actuales en el DOM ya renderizado; retorna
+   la primera coincidencia (o null). Se llama tanto desde el buscador
+   como al final de cada render(), para que el resaltado no se pierda al
+   reconstruir el árbol por otra razón (colapsar/expandir todo, etc.) */
+function reapplySearchHighlight() {
+  const q = searchInput.value.trim().toLowerCase();
+  nodeMap.forEach(({ el }) => el.classList.remove("highlighted"));
+  if (!q) { searchCount.textContent = ""; return null; }
+
+  let matches = 0, firstMatch = null;
+  nodeMap.forEach((entry) => {
+    const text = ((entry.node.role || "") + " " + (entry.node.name || "")).toLowerCase();
+    if (text.includes(q)) {
+      entry.el.classList.add("highlighted");
+      matches++;
+      if (!firstMatch) firstMatch = entry;
+    }
+  });
+  searchCount.textContent = matches > 0 ? matches + " resultado" + (matches > 1 ? "s" : "") : "Sin resultados";
+  return firstMatch;
+}
+
+searchInput.addEventListener("input", () => {
+  const q = searchInput.value.trim().toLowerCase();
+  if (q) {
+    let needsRender = false;
+    (function scan(node) {
+      const text = ((node.role || "") + " " + (node.name || "")).toLowerCase();
+      if (text.includes(q) && expandPathTo(node)) needsRender = true;
+      (node.children || []).forEach(scan);
+    })(ORG_DATA);
+    if (needsRender) render();
+  }
+  const firstMatch = reapplySearchHighlight();
+  if (firstMatch) {
+    setTimeout(() => {
+      firstMatch.el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    }, 150);
+  }
+});
+
+/* ---- Filtro por área ---- */
+const areaFilterBody = document.getElementById("area-filter-body");
+const activeAreas = new Set();
+
+/* Cuenta cargos por área en TODO el organigrama (no solo lo visible),
+   para que el número no cambie según lo que esté colapsado */
+function countByArea(area) {
+  let n = 0;
+  (function rec(node) { if (node.area === area) n++; (node.children || []).forEach(rec); })(ORG_DATA);
+  return n;
+}
+
+const areasInOrder = Object.keys(AREA_COLORS).filter(label => countByArea(label) > 0);
+
+function renderAreaFilter() {
+  areaFilterBody.innerHTML = "";
+  areasInOrder.forEach(area => {
+    const count = countByArea(area);
+    const chip = document.createElement("button");
+    chip.className = "oc-area-chip" + (activeAreas.has(area) ? " active" : "");
+    const c = areaColor(area);
+    chip.innerHTML = `<span class="dot" style="background:${c.bg};border-color:${c.fg}"></span><span>${escapeHtml(area)}</span><span class="count">${count}</span>`;
+    chip.addEventListener("click", () => {
+      if (activeAreas.has(area)) activeAreas.delete(area);
+      else activeAreas.add(area);
+      renderAreaFilter();
+      updateAreaFilterLabel();
+      render();
+    });
+    areaFilterBody.appendChild(chip);
+  });
+
+  if (activeAreas.size > 0) {
+    const reset = document.createElement("button");
+    reset.className = "oc-area-chip reset";
+    reset.textContent = "Mostrar todas";
+    reset.addEventListener("click", () => {
+      activeAreas.clear();
+      renderAreaFilter();
+      updateAreaFilterLabel();
+      render();
+    });
+    areaFilterBody.appendChild(reset);
+  }
+}
+
+function applyAreaFilter() {
+  nodeMap.forEach(({ el, node }) => {
+    if (activeAreas.size === 0) {
+      el.classList.remove("area-dim", "area-match");
+      return;
+    }
+    const match = node.area && activeAreas.has(node.area);
+    el.classList.toggle("area-match", match);
+    el.classList.toggle("area-dim", !match);
+  });
+}
+
+renderAreaFilter();
+
+const areaFilterEl = document.getElementById("area-filter");
+const areaFilterToggleBtn = document.getElementById("area-filter-toggle");
+
+function updateAreaFilterLabel() {
+  areaFilterToggleBtn.innerHTML = activeAreas.size > 0
+    ? `Filtrar por área (${activeAreas.size}) <span class="chev">▾</span>`
+    : `Filtrar por área <span class="chev">▾</span>`;
+}
+updateAreaFilterLabel();
+
+areaFilterToggleBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  areaFilterEl.classList.toggle("open");
+});
+document.addEventListener("click", (e) => {
+  if (!areaFilterEl.contains(e.target)) areaFilterEl.classList.remove("open");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") areaFilterEl.classList.remove("open");
+});
+
+/* ---- Panel lateral de detalle ---- */
+const panel = document.getElementById("slide-panel");
+const panelOverlay = document.getElementById("panel-overlay");
+const panelContent = document.getElementById("panel-content");
+const panelClose = document.getElementById("panel-close");
+
+function openPanel(node) {
+  const estado = node.vacant
+    ? '<span class="panel-badge vacant">Vacante</span>'
+    : '<span class="panel-badge active">Activo</span>';
+
+  panelContent.innerHTML = `
+    <div class="panel-title">${escapeHtml(node.role)}</div>
+    <div class="panel-name">${escapeHtml(node.name)}</div>
+    <div class="panel-section">
+      <div class="panel-label">Estado</div>
+      <div class="panel-value">${estado}</div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-label">Cargo</div>
+      <div class="panel-value">${escapeHtml(node.role)}</div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-label">Nombre</div>
+      <div class="panel-value">${escapeHtml(node.name)}</div>
+    </div>
+    ${node.children && node.children.length > 0 ? `
+    <div class="panel-section">
+      <div class="panel-label">Equipo a cargo</div>
+      <div class="panel-value">${node.children.length} persona(s)</div>
+    </div>
+    ` : ''}
+  `;
+  panel.classList.add("open");
+  panelOverlay.classList.add("open");
+}
+
+function closePanel() {
+  panel.classList.remove("open");
+  panelOverlay.classList.remove("open");
+}
+
+panelClose.addEventListener("click", closePanel);
+panelOverlay.addEventListener("click", closePanel);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closePanel();
+});
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
+}
+
+/* ---- Botón flotante de exportación: abre el menú con los formatos ---- */
+const exportFab = document.getElementById("export-fab");
+const exportFabBtn = document.getElementById("export-fab-btn");
+const exportMenu = document.getElementById("export-menu");
+
+function closeExportMenu() {
+  exportMenu.classList.remove("open");
+  exportFabBtn.setAttribute("aria-expanded", "false");
+}
+
+exportFabBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const willOpen = !exportMenu.classList.contains("open");
+  exportMenu.classList.toggle("open", willOpen);
+  exportFabBtn.setAttribute("aria-expanded", String(willOpen));
+});
+document.addEventListener("click", (e) => {
+  if (!exportFab.contains(e.target)) closeExportMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeExportMenu();
+});
+
+/* ---- Exportar como imagen ----
+   html2canvas no interpreta bien elementos dentro de un ancestro con CSS
+   transform (deja las tarjetas en blanco, sin texto) ni las variables CSS
+   (var(--ink), etc.). Antes de capturar, quitamos el transform del zoom y
+   "congelamos" los colores calculados como estilos inline, y los restauramos
+   al terminar. */
+function flattenForExport(root) {
+  const originalTransform = root.style.transform;
+  root.style.transform = "none";
+
+  const colorProps = ["color", "backgroundColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor", "boxShadow"];
+  const touched = [root, ...root.querySelectorAll("*")].map(el => {
+    const computed = getComputedStyle(el);
+    const prev = {};
+    colorProps.forEach(p => { prev[p] = el.style[p]; el.style[p] = computed[p]; });
+    return { el, prev };
+  });
+
+  return function restore() {
+    root.style.transform = originalTransform;
+    touched.forEach(({ el, prev }) => {
+      colorProps.forEach(p => { el.style[p] = prev[p]; });
+    });
+  };
+}
+
+const exportImageBtn = document.getElementById("export-image");
+exportImageBtn.addEventListener("click", async () => {
+  closeExportMenu();
+  const originalLabel = exportImageBtn.textContent;
+  exportImageBtn.textContent = "Generando…";
+  exportImageBtn.disabled = true;
+  const restore = flattenForExport(canvas);
+  try {
+    const shot = await html2canvas(canvas, { backgroundColor: "#ffffff", scale: 2 });
+    const link = document.createElement("a");
+    link.download = "organigrama-austral-pack.png";
+    link.href = shot.toDataURL("image/png");
+    link.click();
+  } catch (err) {
+    alert("No se pudo generar la imagen: " + err.message);
+  } finally {
+    restore();
+    exportImageBtn.textContent = originalLabel;
+    exportImageBtn.disabled = false;
+  }
+});
+
+/* ---- Exportar como PowerPoint (organigrama como imagen dentro de una diapositiva) ---- */
+const exportPptBtn = document.getElementById("export-ppt");
+exportPptBtn.addEventListener("click", async () => {
+  closeExportMenu();
+  const originalLabel = exportPptBtn.textContent;
+  exportPptBtn.textContent = "Generando…";
+  exportPptBtn.disabled = true;
+  const restore = flattenForExport(canvas);
+  try {
+    const shot = await html2canvas(canvas, { backgroundColor: "#ffffff", scale: 2 });
+    const dataUrl = shot.toDataURL("image/png");
+
+    const pptx = new PptxGenJS();
+    pptx.defineLayout({ name: "ORG_WIDE", width: 13.33, height: 7.5 });
+    pptx.layout = "ORG_WIDE";
+
+    const slide = pptx.addSlide();
+    slide.addText("Organigrama Austral Pack", {
+      x: 0.4, y: 0.25, w: 12.5, h: 0.5,
+      fontFace: "Arial", fontSize: 20, bold: true, color: "9E050D"
+    });
+
+    const areaTop = 0.9, areaMaxW = 12.53, areaMaxH = 6.3;
+    const ratio = shot.width / shot.height;
+    let w = areaMaxW, h = areaMaxW / ratio;
+    if (h > areaMaxH) { h = areaMaxH; w = areaMaxH * ratio; }
+    const x = (13.33 - w) / 2;
+    const y = areaTop + (areaMaxH - h) / 2;
+
+    slide.addImage({ data: dataUrl, x, y, w, h });
+
+    await pptx.writeFile({ fileName: "organigrama-austral-pack.pptx" });
+  } catch (err) {
+    alert("No se pudo generar el PowerPoint: " + err.message);
+  } finally {
+    restore();
+    exportPptBtn.textContent = originalLabel;
+    exportPptBtn.disabled = false;
+  }
+});
+
+/* Primer dibujo: va al final porque render() ya reaplica el resaltado de
+   búsqueda y el filtro por área, que deben estar declarados primero */
+render();
+</script>
+
+</body>
+</html>
