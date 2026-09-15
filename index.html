@@ -557,6 +557,7 @@
 <div class="oc-export-fab" id="export-fab">
   <div class="oc-export-menu" id="export-menu">
     <button class="oc-export-option" id="export-image">Exportar como imagen (PNG)</button>
+    <button class="oc-export-option" id="export-pdf">Exportar como PDF</button>
     <button class="oc-export-option" id="export-ppt">Exportar como PowerPoint (PPTX)</button>
   </div>
   <button class="oc-export-fab-btn" id="export-fab-btn" aria-haspopup="true" aria-expanded="false" aria-label="Exportar organigrama">
@@ -574,6 +575,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
 /*
@@ -1293,6 +1295,40 @@ exportImageBtn.addEventListener("click", async () => {
     restore();
     exportImageBtn.textContent = originalLabel;
     exportImageBtn.disabled = false;
+  }
+});
+
+/* ---- Exportar como PDF (una sola página, del tamaño exacto del
+   organigrama capturado, para no recortar ni deformar nada) ---- */
+const exportPdfBtn = document.getElementById("export-pdf");
+exportPdfBtn.addEventListener("click", async () => {
+  closeExportMenu();
+  const originalLabel = exportPdfBtn.textContent;
+  exportPdfBtn.textContent = "Generando…";
+  exportPdfBtn.disabled = true;
+  const restore = flattenForExport(canvas);
+  try {
+    const shot = await html2canvas(canvas, { backgroundColor: "#ffffff", scale: 2 });
+    /* JPEG en vez de PNG: el diagrama es fondo blanco + líneas/texto, así
+       que la pérdida es imperceptible y el archivo queda muchísimo más
+       liviano (un PNG sin comprimir de este tamaño pesa decenas de MB) */
+    const dataUrl = shot.toDataURL("image/jpeg", 0.92);
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+      orientation: shot.width >= shot.height ? "landscape" : "portrait",
+      unit: "px",
+      format: [shot.width, shot.height],
+      hotfixes: ["px_scaling"]
+    });
+    pdf.addImage(dataUrl, "JPEG", 0, 0, shot.width, shot.height);
+    pdf.save("organigrama-austral-pack.pdf");
+  } catch (err) {
+    alert("No se pudo generar el PDF: " + err.message);
+  } finally {
+    restore();
+    exportPdfBtn.textContent = originalLabel;
+    exportPdfBtn.disabled = false;
   }
 });
 
